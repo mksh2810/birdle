@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'ad_service.dart';
 import 'game.dart';
 import 'dictionary_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  AdService.instance.initialize();
   runApp(const MainApp());
 }
 
@@ -153,9 +156,92 @@ class _GamePageState extends State<GamePage> {
 
   void _showHint() {
     if (_game.isGameOver || _showAnswer) return;
-    final hint = _game.getHint();
-    _setStatus(hint);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(hint)));
+
+    if (_game.freeHintsRemaining > 0) {
+      setState(() {
+        _game.useFreeHint();
+        final step = _game.freeHintsUsed;
+        if (step == 1) {
+          _setStatus('Hint 1 unlocked: Word structure revealed.');
+        } else if (step == 2) {
+          _setStatus('Hint 2 unlocked: Dictionary definition revealed.');
+        }
+      });
+    } else {
+      _showWatchAdDialog();
+    }
+  }
+
+  void _showWatchAdDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.video_library, color: Colors.deepPurple),
+            SizedBox(width: 8),
+            Text('Get Extra Hint'),
+          ],
+        ),
+        content: const Text(
+          'You have used all of your free hints. Would you like to watch a short ad to reveal a letter of the word?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _watchAdForHint();
+            },
+            child: const Text('Watch Ad'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _watchAdForHint() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    AdService.instance.showRewardedAd(
+      onRewardEarned: () {
+        Navigator.of(context).pop(); // dismiss loading spinner
+        setState(() {
+          final index = _game.revealRandomLetter();
+          if (index != -1) {
+            final char = _game.hiddenWord[index].char.toUpperCase();
+            final ordinal = _getOrdinal(index + 1);
+            _setStatus('Ad Reward: The $ordinal letter is "$char".');
+          } else {
+            _setStatus('All letters are already revealed!');
+          }
+        });
+      },
+      onAdFailed: () {
+        Navigator.of(context).pop(); // dismiss loading spinner
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to load ad. Please try again later.'),
+          ),
+        );
+      },
+    );
+  }
+
+  String _getOrdinal(int number) {
+    if (number == 1) return '1st';
+    if (number == 2) return '2nd';
+    if (number == 3) return '3rd';
+    return '${number}th';
   }
 
   void _giveUp() {
@@ -276,7 +362,7 @@ class _GamePageState extends State<GamePage> {
                 Expanded(
                   child: FilledButton.icon(
                     icon: const Icon(Icons.lightbulb_outline),
-                    label: const Text('Hint'),
+                    label: Text('Hint (${_game.freeHintsRemaining}/2 left)'),
                     onPressed: _game.isGameOver || _showAnswer
                         ? null
                         : _showHint,
@@ -347,6 +433,50 @@ class _GamePageState extends State<GamePage> {
 
     final def = _currentDefinition!;
 
+    // If 0 hints are used, show a card prompt to click the hint button.
+    if (_game.freeHintsUsed == 0) {
+      return Card(
+        elevation: 0,
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Row(
+            children: [
+              Icon(Icons.lock_outline, color: colorScheme.primary, size: 28),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Spelling Clues Locked',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tap the "Hint" button below to unlock clues!',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Otherwise, build the progressive clue card content.
+    final firstLetter = _game.hiddenWord[0].char.toUpperCase();
+    final lastLetter = _game.hiddenWord[_game.hiddenWord.length - 1].char.toUpperCase();
+    final pos = def.partOfSpeech != null ? def.partOfSpeech!.toUpperCase() : 'UNKNOWN';
+
     return Card(
       elevation: 0,
       color: colorScheme.primaryContainer.withValues(alpha: 0.3),
@@ -358,17 +488,29 @@ class _GamePageState extends State<GamePage> {
           children: [
             // Header
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(
-                  Icons.menu_book_rounded,
-                  size: 20,
-                  color: colorScheme.primary,
+                Row(
+                  children: [
+                    Icon(
+                      Icons.menu_book_rounded,
+                      size: 20,
+                      color: colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Spell-Bee Clues Unlocked',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
                 Text(
-                  'Spell-Bee Clue',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: colorScheme.primary,
+                  'Free Hints: ${_game.freeHintsUsed}/2',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.primary.withValues(alpha: 0.8),
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -376,12 +518,12 @@ class _GamePageState extends State<GamePage> {
             ),
             const Divider(height: 16),
 
-            // Definition
+            // Hint 1 Details (Always visible since _game.freeHintsUsed >= 1)
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '📖 ',
+                  '📏 ',
                   style: theme.textTheme.bodyMedium,
                 ),
                 Expanded(
@@ -389,7 +531,7 @@ class _GamePageState extends State<GamePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Definition',
+                        'Word Info (Hint 1)',
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
@@ -397,10 +539,8 @@ class _GamePageState extends State<GamePage> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        def.definition,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.4,
-                        ),
+                        'This word is a $pos. It has 5 letters. It starts with "$firstLetter" and ends with "$lastLetter".',
+                        style: theme.textTheme.bodyMedium,
                       ),
                     ],
                   ),
@@ -408,14 +548,14 @@ class _GamePageState extends State<GamePage> {
               ],
             ),
 
-            // Example sentence
-            if (def.example != null) ...[
-              const SizedBox(height: 12),
+            // Hint 2 Details (Visible when _game.freeHintsUsed >= 2)
+            if (_game.freeHintsUsed >= 2) ...[
+              const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '💬 ',
+                    '📖 ',
                     style: theme.textTheme.bodyMedium,
                   ),
                   Expanded(
@@ -423,7 +563,7 @@ class _GamePageState extends State<GamePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Example',
+                          'Definition (Hint 2)',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
@@ -431,9 +571,8 @@ class _GamePageState extends State<GamePage> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          '"${def.example}"',
+                          def.definition,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            fontStyle: FontStyle.italic,
                             height: 1.4,
                           ),
                         ),
@@ -441,6 +580,76 @@ class _GamePageState extends State<GamePage> {
                     ),
                   ),
                 ],
+              ),
+              if (def.example != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '💬 ',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Example Sentence',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '"${def.example}"',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontStyle: FontStyle.italic,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+
+            // Ad Hints (Visible when ad letters are revealed)
+            if (_game.revealedLetterIndices.isNotEmpty) ...[
+              const Divider(height: 24),
+              Row(
+                children: [
+                  Icon(Icons.video_library, color: Colors.green.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Revealed Letters (Ad Rewards)',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: Colors.green.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _game.revealedLetterIndices.map((index) {
+                  final char = _game.hiddenWord[index].char.toUpperCase();
+                  final ordinal = _getOrdinal(index + 1);
+                  return Chip(
+                    avatar: Icon(Icons.check_circle, color: Colors.green.shade700, size: 16),
+                    label: Text(
+                      '$ordinal letter is "$char"',
+                      style: TextStyle(color: Colors.green.shade900, fontWeight: FontWeight.bold),
+                    ),
+                    backgroundColor: Colors.green.shade50,
+                    side: BorderSide(color: Colors.green.shade200),
+                  );
+                }).toList(),
               ),
             ],
           ],

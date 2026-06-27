@@ -129,6 +129,49 @@ class Game {
   /// The word the player is trying to guess.
   Word get hiddenWord => _wordToGuess;
 
+  /// Number of free hints used by the player in the current round.
+  int _freeHintsUsed = 0;
+
+  /// Indices of letters in the hidden word that have been revealed by ads.
+  final List<int> _revealedLetterIndices = [];
+
+  /// Returns the number of free hints remaining.
+  int get freeHintsRemaining => max(0, 2 - _freeHintsUsed);
+
+  /// Returns the number of free hints used.
+  int get freeHintsUsed => _freeHintsUsed;
+
+  /// Returns the list of indices of letters revealed by ads.
+  List<int> get revealedLetterIndices => UnmodifiableListView(_revealedLetterIndices);
+
+  /// Increments the free hint usage if any are remaining.
+  void useFreeHint() {
+    if (_freeHintsUsed < 2) {
+      _freeHintsUsed++;
+    }
+  }
+
+  /// Reveals a random unrevealed letter of the hidden word.
+  /// Returns the index of the revealed letter, or -1 if all are revealed.
+  int revealRandomLetter() {
+    final wordLength = _wordToGuess.length;
+    final unrevealedIndices = <int>[];
+    for (var i = 0; i < wordLength; i++) {
+      if (!_revealedLetterIndices.contains(i)) {
+        unrevealedIndices.add(i);
+      }
+    }
+
+    if (unrevealedIndices.isEmpty) {
+      return -1;
+    }
+
+    final random = Random();
+    final indexToReveal = unrevealedIndices[random.nextInt(unrevealedIndices.length)];
+    _revealedLetterIndices.add(indexToReveal);
+    return indexToReveal;
+  }
+
   /// The current definition and example for the hidden word.
   WordDefinition? get definition => _definition;
 
@@ -230,6 +273,8 @@ class Game {
     _guesses = List<Word>.filled(maxGuesses, Word.empty());
     _definition = null;
     _isLoadingDefinition = false;
+    _freeHintsUsed = 0;
+    _revealedLetterIndices.clear();
   }
 
   /// Evaluates [guess] against the hidden word,

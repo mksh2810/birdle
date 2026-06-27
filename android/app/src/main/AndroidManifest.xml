@@ -4,6 +4,11 @@
         android:label="birdle"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Google Mobile Ads SDK App ID -->
+        <!-- REPLACE THIS WITH YOUR REAL ADMOB APP ID TO START EARNING -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3347511713"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
