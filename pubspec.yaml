@@ -16,6 +16,15 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "yes"
+  ios: "yes"
+  image_path: "assets/logo_original.png"
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo_original.png
+    - assets/logo_appbar.png

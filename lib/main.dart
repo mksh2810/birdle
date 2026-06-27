@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'ad_service.dart';
 import 'game.dart';
@@ -15,24 +16,31 @@ class MainApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: 'Birdle',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorSchemeSeed: Colors.deepPurple,
-        brightness: Brightness.light,
+        scaffoldBackgroundColor: const Color(0xFFF7F4EB), // Cream background matching the logo
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF6CA372), // Sage Green
+          primary: const Color(0xFF6CA372),
+          secondary: const Color(0xFFF2AF37), // Mustard Yellow
+          surface: const Color(0xFFF7F4EB),
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFFF7F4EB),
+          foregroundColor: Color(0xFF4E5156),
+          elevation: 0,
+        ),
       ),
       home: Scaffold(
         appBar: AppBar(
-          title: const Row(
-            children: [
-              Icon(Icons.spellcheck, size: 28),
-              SizedBox(width: 8),
-              Text(
-                'Birdle',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
+          title: Image.asset(
+            'assets/logo_appbar.png',
+            height: 45,
+            fit: BoxFit.contain,
           ),
-          centerTitle: false,
+          centerTitle: true,
         ),
         body: const SafeArea(child: GamePage()),
       ),
@@ -50,10 +58,15 @@ class Tile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fillColor = switch (hitType) {
-      HitType.hit => Colors.green.shade600,
-      HitType.partial => Colors.amber.shade600,
-      HitType.miss => Colors.grey.shade600,
-      HitType.none => Colors.white,
+      HitType.hit => const Color(0xFF6CA372), // Sage Green from logo
+      HitType.partial => const Color(0xFFF2AF37), // Mustard Yellow from logo
+      HitType.miss => const Color(0xFF56595F), // Slate Grey from logo
+      HitType.none => const Color(0xFFF9F7F1), // Cream background for unused
+    };
+
+    final textColor = switch (hitType) {
+      HitType.none => const Color(0xFF4E5156), // Dark Grey text
+      _ => Colors.white,
     };
 
     return AnimatedContainer(
@@ -63,8 +76,11 @@ class Tile extends StatelessWidget {
       width: 60,
       height: 60,
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey.shade300),
-        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF4E5156), // Outline from logo
+          width: 2.5,
+        ),
+        borderRadius: BorderRadius.circular(14),
         color: fillColor,
       ),
       child: AnimatedSwitcher(
@@ -74,7 +90,7 @@ class Tile extends StatelessWidget {
           child: Text(
             letter.toUpperCase(),
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: hitType == HitType.none ? Colors.black87 : Colors.white,
+              color: textColor,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -97,6 +113,7 @@ class _GamePageState extends State<GamePage> {
   bool _showAnswer = false;
   bool _isLoadingDefinition = true;
   WordDefinition? _currentDefinition;
+  int _shakeTrigger = 0;
 
   @override
   void initState() {
@@ -131,11 +148,17 @@ class _GamePageState extends State<GamePage> {
     if (_game.isGameOver || _showAnswer) return;
 
     if (guess.length != 5) {
+      setState(() {
+        _shakeTrigger++;
+      });
       _setStatus('Enter a 5-letter word.');
       return;
     }
 
     if (!_game.isLegalGuess(guess)) {
+      setState(() {
+        _shakeTrigger++;
+      });
       _setStatus('That word is not in the list.');
       return;
     }
@@ -160,11 +183,13 @@ class _GamePageState extends State<GamePage> {
     if (_game.freeHintsRemaining > 0) {
       setState(() {
         _game.useFreeHint();
-        final step = _game.freeHintsUsed;
-        if (step == 1) {
-          _setStatus('Hint 1 unlocked: Word structure revealed.');
-        } else if (step == 2) {
-          _setStatus('Hint 2 unlocked: Dictionary definition revealed.');
+        final index = _game.revealRandomLetter();
+        if (index != -1) {
+          final char = _game.hiddenWord[index].char.toUpperCase();
+          final ordinal = _getOrdinal(index + 1);
+          _setStatus('Free Hint (${_game.freeHintsUsed}/2 used): The $ordinal letter is "$char".');
+        } else {
+          _setStatus('All letters are already revealed!');
         }
       });
     } else {
@@ -268,138 +293,157 @@ class _GamePageState extends State<GamePage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // ── Spell-Bee Clue Card ──
-            _buildClueCard(theme, colorScheme),
-            const SizedBox(height: 12),
-
-            // ── Status bar ──
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  'Guesses left: ${_game.guessesRemaining}',
-                  style: theme.textTheme.titleMedium,
-                ),
-                if (_currentDefinition?.partOfSpeech != null)
-                  Chip(
-                    label: Text(
-                      _currentDefinition!.partOfSpeech!,
-                      style: TextStyle(
-                        color: colorScheme.onSecondaryContainer,
-                        fontSize: 12,
-                      ),
-                    ),
-                    backgroundColor: colorScheme.secondaryContainer,
-                    side: BorderSide.none,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
 
-            if (_statusMessage != null)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _game.didWin
-                      ? Colors.green.shade50
-                      : _game.didLose || _showAnswer
-                          ? Colors.red.shade50
-                          : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  _statusMessage!,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            const SizedBox(height: 12),
 
-            // ── Guess grid ──
-            for (var rowIndex = 0; rowIndex < _game.guesses.length; rowIndex++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                // ── Spell-Bee Clue Card ──
+                _buildClueCard(theme, colorScheme),
+                const SizedBox(height: 12),
+
+                // ── Status bar ──
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    for (
-                      var colIndex = 0;
-                      colIndex < _game.guesses[rowIndex].length;
-                      colIndex++
-                    )
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                        child: Tile(
-                          _game.guesses[rowIndex][colIndex].char,
-                          _game.guesses[rowIndex][colIndex].type,
-                          index: rowIndex * 5 + colIndex,
+                    Text(
+                      'Guesses left: ${_game.guessesRemaining}',
+                      style: theme.textTheme.titleMedium,
+                    ),
+                    if (_currentDefinition?.partOfSpeech != null)
+                      Chip(
+                        label: Text(
+                          _currentDefinition!.partOfSpeech!,
+                          style: TextStyle(
+                            color: colorScheme.onSecondaryContainer,
+                            fontSize: 12,
+                          ),
                         ),
+                        backgroundColor: colorScheme.secondaryContainer,
+                        side: BorderSide.none,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
                   ],
                 ),
-              ),
-            const SizedBox(height: 12),
+                const SizedBox(height: 8),
 
-            // ── Input ──
-            GuessInput(
-              enabled: !(_game.isGameOver || _showAnswer),
-              onSubmitGuess: _submitGuess,
-            ),
-            const SizedBox(height: 8),
+                if (_statusMessage != null)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _game.didWin
+                          ? Colors.green.shade50
+                          : _game.didLose || _showAnswer
+                              ? Colors.red.shade50
+                              : Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _statusMessage!,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
 
-            // ── Action buttons ──
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    icon: const Icon(Icons.lightbulb_outline),
-                    label: Text('Hint (${_game.freeHintsRemaining}/2 left)'),
-                    onPressed: _game.isGameOver || _showAnswer
-                        ? null
-                        : _showHint,
+                // ── Guess grid wrapped in ShakeWidget ──
+                ShakeWidget(
+                  shakeTrigger: _shakeTrigger,
+                  child: Column(
+                    children: [
+                      for (var rowIndex = 0; rowIndex < _game.guesses.length; rowIndex++)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 6.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              for (
+                                var colIndex = 0;
+                                colIndex < _game.guesses[rowIndex].length;
+                                colIndex++
+                              )
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                                  child: Tile(
+                                    _game.guesses[rowIndex][colIndex].char,
+                                    _game.guesses[rowIndex][colIndex].type,
+                                    index: rowIndex * 5 + colIndex,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    icon: const Icon(Icons.flag_outlined),
-                    label: const Text('Give up'),
-                    onPressed: _game.isGameOver || _showAnswer ? null : _giveUp,
+                const SizedBox(height: 12),
+
+                // ── Input ──
+                GuessInput(
+                  enabled: !(_game.isGameOver || _showAnswer),
+                  onSubmitGuess: _submitGuess,
+                ),
+                const SizedBox(height: 8),
+
+                // ── Action buttons ──
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        icon: const Icon(Icons.lightbulb_outline),
+                        label: Text('Hint (${_game.freeHintsRemaining}/2 left)'),
+                        onPressed: _game.isGameOver || _showAnswer
+                            ? null
+                            : _showHint,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FilledButton.tonalIcon(
+                        icon: const Icon(Icons.flag_outlined),
+                        label: const Text('Give up'),
+                        onPressed: _game.isGameOver || _showAnswer ? null : _giveUp,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // ── Answer reveal ──
+                if (_showAnswer || _game.isGameOver)
+                  Text(
+                    'Answer: ${_game.hiddenWord.toString().toUpperCase()}',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
+                const SizedBox(height: 8),
+
+                // ── New game button ──
+                TextButton.icon(
+                  onPressed: _resetGame,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('New game'),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-
-            // ── Answer reveal ──
-            if (_showAnswer || _game.isGameOver)
-              Text(
-                'Answer: ${_game.hiddenWord.toString().toUpperCase()}',
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            const SizedBox(height: 8),
-
-            // ── New game button ──
-            TextButton.icon(
-              onPressed: _resetGame,
-              icon: const Icon(Icons.refresh),
-              label: const Text('New game'),
-            ),
-          ],
+          ),
         ),
-      ),
+        // Confetti Win Overlay
+        Positioned.fill(
+          child: IgnorePointer(
+            child: ConfettiWidget(isActive: _game.didWin),
+          ),
+        ),
+      ],
     );
   }
 
@@ -432,47 +476,6 @@ class _GamePageState extends State<GamePage> {
     }
 
     final def = _currentDefinition!;
-
-    // If 0 hints are used, show a card prompt to click the hint button.
-    if (_game.freeHintsUsed == 0) {
-      return Card(
-        elevation: 0,
-        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Row(
-            children: [
-              Icon(Icons.lock_outline, color: colorScheme.primary, size: 28),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Spelling Clues Locked',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Tap the "Hint" button below to unlock clues!',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // Otherwise, build the progressive clue card content.
     final firstLetter = _game.hiddenWord[0].char.toUpperCase();
     final lastLetter = _game.hiddenWord[_game.hiddenWord.length - 1].char.toUpperCase();
     final pos = def.partOfSpeech != null ? def.partOfSpeech!.toUpperCase() : 'UNKNOWN';
@@ -488,29 +491,17 @@ class _GamePageState extends State<GamePage> {
           children: [
             // Header
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.menu_book_rounded,
-                      size: 20,
-                      color: colorScheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Spell-Bee Clues Unlocked',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        color: colorScheme.primary,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                Icon(
+                  Icons.menu_book_rounded,
+                  size: 20,
+                  color: colorScheme.primary,
                 ),
+                const SizedBox(width: 8),
                 Text(
-                  'Free Hints: ${_game.freeHintsUsed}/2',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: colorScheme.primary.withValues(alpha: 0.8),
+                  'Spell-Bee Clues (Automatic)',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: colorScheme.primary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -518,7 +509,7 @@ class _GamePageState extends State<GamePage> {
             ),
             const Divider(height: 16),
 
-            // Hint 1 Details (Always visible since _game.freeHintsUsed >= 1)
+            // Clue 1: POS & length
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -531,7 +522,7 @@ class _GamePageState extends State<GamePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Word Info (Hint 1)',
+                        'Word Info',
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: colorScheme.onSurfaceVariant,
                           fontWeight: FontWeight.w600,
@@ -547,15 +538,46 @@ class _GamePageState extends State<GamePage> {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
 
-            // Hint 2 Details (Visible when _game.freeHintsUsed >= 2)
-            if (_game.freeHintsUsed >= 2) ...[
-              const SizedBox(height: 16),
+            // Clue 2: Definition
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '📖 ',
+                  style: theme.textTheme.bodyMedium,
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Definition',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        def.definition,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (def.example != null) ...[
+              const SizedBox(height: 12),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '📖 ',
+                    '💬 ',
                     style: theme.textTheme.bodyMedium,
                   ),
                   Expanded(
@@ -563,7 +585,7 @@ class _GamePageState extends State<GamePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Definition (Hint 2)',
+                          'Example Sentence',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
@@ -571,8 +593,9 @@ class _GamePageState extends State<GamePage> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          def.definition,
+                          '"${def.example}"',
                           style: theme.textTheme.bodyMedium?.copyWith(
+                            fontStyle: FontStyle.italic,
                             height: 1.4,
                           ),
                         ),
@@ -581,53 +604,19 @@ class _GamePageState extends State<GamePage> {
                   ),
                 ],
               ),
-              if (def.example != null) ...[
-                const SizedBox(height: 12),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '💬 ',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Example Sentence',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            '"${def.example}"',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontStyle: FontStyle.italic,
-                              height: 1.4,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
             ],
 
-            // Ad Hints (Visible when ad letters are revealed)
+            // Revealed Letter Clues (both free and ad-rewarded)
             if (_game.revealedLetterIndices.isNotEmpty) ...[
               const Divider(height: 24),
               Row(
                 children: [
-                  Icon(Icons.video_library, color: Colors.green.shade700, size: 20),
+                  Icon(Icons.lightbulb_outline, color: colorScheme.primary, size: 20),
                   const SizedBox(width: 8),
                   Text(
-                    'Revealed Letters (Ad Rewards)',
+                    'Revealed Letters',
                     style: theme.textTheme.titleSmall?.copyWith(
-                      color: Colors.green.shade700,
+                      color: colorScheme.primary,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -637,19 +626,28 @@ class _GamePageState extends State<GamePage> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _game.revealedLetterIndices.map((index) {
+                children: List.generate(_game.revealedLetterIndices.length, (i) {
+                  final index = _game.revealedLetterIndices[i];
                   final char = _game.hiddenWord[index].char.toUpperCase();
                   final ordinal = _getOrdinal(index + 1);
+                  final isFree = i < 2; // The first two hints are free
                   return Chip(
-                    avatar: Icon(Icons.check_circle, color: Colors.green.shade700, size: 16),
-                    label: Text(
-                      '$ordinal letter is "$char"',
-                      style: TextStyle(color: Colors.green.shade900, fontWeight: FontWeight.bold),
+                    avatar: Icon(
+                      isFree ? Icons.check_circle_outline : Icons.check_circle,
+                      color: isFree ? colorScheme.primary : Colors.green.shade700,
+                      size: 16,
                     ),
-                    backgroundColor: Colors.green.shade50,
-                    side: BorderSide(color: Colors.green.shade200),
+                    label: Text(
+                      '${isFree ? "Free Hint" : "Ad Reward"}: $ordinal letter is "$char"',
+                      style: TextStyle(
+                        color: isFree ? colorScheme.onPrimaryContainer : Colors.green.shade900,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    backgroundColor: isFree ? colorScheme.primaryContainer.withValues(alpha: 0.5) : Colors.green.shade50,
+                    side: BorderSide(color: isFree ? colorScheme.primary.withValues(alpha: 0.3) : Colors.green.shade200),
                   );
-                }).toList(),
+                }),
               ),
             ],
           ],
@@ -722,4 +720,203 @@ class _GuessInputState extends State<GuessInput> {
       ],
     );
   }
+}
+
+// ── Visual Effect Widgets ──
+
+/// A widget that shakes its child horizontally when [shakeTrigger] changes.
+class ShakeWidget extends StatefulWidget {
+  const ShakeWidget({
+    super.key,
+    required this.child,
+    required this.shakeTrigger,
+  });
+
+  final Widget child;
+  final int shakeTrigger;
+
+  @override
+  State<ShakeWidget> createState() => _ShakeWidgetState();
+}
+
+class _ShakeWidgetState extends State<ShakeWidget> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    duration: const Duration(milliseconds: 500),
+    vsync: this,
+  );
+
+  @override
+  void didUpdateWidget(covariant ShakeWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.shakeTrigger != oldWidget.shakeTrigger) {
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      child: widget.child,
+      builder: (context, child) {
+        final double sineValue = sin(_controller.value * 4 * pi);
+        return Transform.translate(
+          offset: Offset(sineValue * 8 * (1 - _controller.value), 0),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+/// Particle model for the win confetti effect.
+class ConfettiParticle {
+  ConfettiParticle({
+    required this.color,
+    required this.x,
+    required this.y,
+    required this.vx,
+    required this.vy,
+    required this.size,
+    required this.rotation,
+    required this.rotationSpeed,
+  });
+
+  final Color color;
+  double x;
+  double y;
+  double vx;
+  double vy;
+  final double size;
+  double rotation;
+  final double rotationSpeed;
+}
+
+/// A widget that displays a win confetti particle animation.
+class ConfettiWidget extends StatefulWidget {
+  const ConfettiWidget({super.key, required this.isActive});
+
+  final bool isActive;
+
+  @override
+  State<ConfettiWidget> createState() => _ConfettiWidgetState();
+}
+
+class _ConfettiWidgetState extends State<ConfettiWidget> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 4),
+  );
+
+  final List<ConfettiParticle> _particles = [];
+  final Random _random = Random();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      _updateParticles();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ConfettiWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _spawnParticles();
+      _controller.repeat();
+    } else if (!widget.isActive && oldWidget.isActive) {
+      _controller.stop();
+      _particles.clear();
+    }
+  }
+
+  void _spawnParticles() {
+    _particles.clear();
+    final colors = [
+      const Color(0xFF6CA372), // Sage Green
+      const Color(0xFFF2AF37), // Mustard Yellow
+      const Color(0xFF56595F), // Slate Grey
+      const Color(0xFFEEAA30), // Lighter Yellow
+      Colors.red.shade400,
+      Colors.blue.shade400,
+    ];
+
+    for (var i = 0; i < 100; i++) {
+      _particles.add(
+        ConfettiParticle(
+          color: colors[_random.nextInt(colors.length)],
+          x: 0.5,
+          y: 0.2,
+          vx: (_random.nextDouble() - 0.5) * 0.08,
+          vy: -_random.nextDouble() * 0.1 - 0.05,
+          size: _random.nextDouble() * 8 + 6,
+          rotation: _random.nextDouble() * 2 * pi,
+          rotationSpeed: (_random.nextDouble() - 0.5) * 0.2,
+        ),
+      );
+    }
+  }
+
+  void _updateParticles() {
+    if (!mounted) return;
+    setState(() {
+      for (final p in _particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.005; // gravity
+        p.rotation += p.rotationSpeed;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isActive) return const SizedBox.shrink();
+
+    return CustomPaint(
+      painter: _ConfettiPainter(_particles),
+      child: Container(),
+    );
+  }
+}
+
+class _ConfettiPainter extends CustomPainter {
+  _ConfettiPainter(this.particles);
+
+  final List<ConfettiParticle> particles;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..style = PaintingStyle.fill;
+
+    for (final p in particles) {
+      final px = p.x * size.width;
+      final py = p.y * size.height;
+
+      if (py > size.height || px < 0 || px > size.width) continue;
+
+      canvas.save();
+      canvas.translate(px, py);
+      canvas.rotate(p.rotation);
+      paint.color = p.color;
+      canvas.drawRect(Rect.fromCenter(center: Offset.zero, width: p.size, height: p.size * 0.6), paint);
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

@@ -19,11 +19,11 @@ class AdService {
   
   /// Your production AdMob Application ID.
   /// Replace these in android/app/src/main/AndroidManifest.xml and ios/Runner/Info.plist as well.
-  static const String androidAppId = 'ca-app-pub-3940256099942544~3347511713';
+  static const String androidAppId = 'ca-app-pub-4649783662485857~9436700999';
   static const String iosAppId = 'ca-app-pub-3940256099942544~1458002511';
 
   /// Your production Rewarded Ad Unit IDs.
-  static const String androidRewardedAdUnitId = 'ca-app-pub-3940256099942544/5224354917';
+  static const String androidRewardedAdUnitId = 'ca-app-pub-4649783662485857/1481767895';
   static const String iosRewardedAdUnitId = 'ca-app-pub-3940256099942544/1712485313';
 
   // =========================================================================
