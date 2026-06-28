@@ -1,6 +1,6 @@
 # Birdle 🐦
 
-An enhanced, spell-bee style word-guessing game built with Flutter. Inspired by Wordle, Birdle challenges players to guess a hidden 5-letter English word using dictionary definitions, usage examples, and traditional color-coded tile feedback.
+An enhanced, spell-bee style word-guessing game built with Flutter. Inspired by Wordle, Birdle challenges players to guess a hidden 5-letter English word using dictionary definitions, usage examples, and traditional color-coded tile feedback. It is a slight improvement of the birdle project in flutter tutorial.
 
 ## Features
 
